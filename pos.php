@@ -17,12 +17,14 @@ $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
+
 <html>
 
 <head>
     <meta charset="UTF-8">
     <title>POS</title>
 
+    ```
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/dashboard.css">
 
@@ -122,31 +124,8 @@ $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .checkoutBtn:hover {
             background: #27ae60;
         }
-
-        .ripple {
-            position: absolute;
-            width: 100px;
-            height: 100px;
-            background: rgba(0, 0, 0, 0.1);
-            border-radius: 50%;
-            animation: rippleEffect 0.5s;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        @keyframes rippleEffect {
-            from {
-                transform: scale(0);
-                opacity: 0.5;
-            }
-
-            to {
-                transform: scale(3);
-                opacity: 0;
-            }
-        }
     </style>
+    ```
 
 </head>
 
@@ -167,6 +146,7 @@ $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="posWrapper">
 
                     <!-- PRODUCTS -->
+
                     <div class="productGrid">
 
                         <?php foreach ($products as $p):
@@ -186,13 +166,11 @@ $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <div class="stockText" style="margin-top:5px;font-size:13px;
 color: <?= $stock == 0 ? 'red' : ($stock < 10 ? 'orange' : 'green') ?>;
 font-weight:600;">
-
                                     <?php
                                     if ($stock == 0) echo "Out of Stock";
                                     elseif ($stock < 10) echo "Low Stock ($stock)";
                                     else echo "In Stock ($stock)";
                                     ?>
-
                                 </div>
 
                             </div>
@@ -202,6 +180,7 @@ font-weight:600;">
                     </div>
 
                     <!-- CART -->
+
                     <div class="cartBox">
 
                         <h3><i class="fa-solid fa-cart-shopping"></i> Cart</h3>
@@ -231,6 +210,8 @@ font-weight:600;">
         function addToCart(e, id, name, price) {
 
             let card = document.querySelector(`.productCard[data-id="${id}"]`);
+            let stockText = card.querySelector(".stockText");
+
             let currentStock = parseInt(card.dataset.stock);
 
             if (currentStock <= 0) {
@@ -238,16 +219,7 @@ font-weight:600;">
                 return;
             }
 
-            if (cart[id] && cart[id].qty >= currentStock) {
-                Swal.fire("Stock Limit", "Max stock reached", "warning");
-                return;
-            }
-
-            let ripple = document.createElement("span");
-            ripple.classList.add("ripple");
-            card.appendChild(ripple);
-            setTimeout(() => ripple.remove(), 500);
-
+            // add to cart
             if (!cart[id]) cart[id] = {
                 name,
                 price,
@@ -255,27 +227,30 @@ font-weight:600;">
             };
             else cart[id].qty++;
 
+            // 🔥 UPDATE UI STOCK
+            let newStock = currentStock - 1;
+            card.dataset.stock = newStock;
+
+            if (newStock <= 0) {
+                stockText.innerText = "Out of Stock";
+                stockText.style.color = "red";
+                card.classList.add("out");
+            } else if (newStock < 10) {
+                stockText.innerText = `Low Stock (${newStock})`;
+                stockText.style.color = "orange";
+            } else {
+                stockText.innerText = `In Stock (${newStock})`;
+                stockText.style.color = "green";
+            }
+
             renderCart();
         }
 
         function changeQty(id, d) {
-
-            let card = document.querySelector(`.productCard[data-id="${id}"]`);
-            let stock = parseInt(card.dataset.stock);
-
             let item = cart[id];
-
             if (!item) return;
-
-            if (item.qty + d > stock) {
-                Swal.fire("Stock Limit", "Cannot exceed stock", "warning");
-                return;
-            }
-
             item.qty += d;
-
             if (item.qty <= 0) delete cart[id];
-
             renderCart();
         }
 
@@ -285,12 +260,10 @@ font-weight:600;">
         }
 
         function renderCart() {
-
             let html = '',
                 subtotal = 0;
 
             for (let id in cart) {
-
                 let i = cart[id];
                 let total = i.price * i.qty;
                 subtotal += total;
@@ -320,6 +293,7 @@ font-weight:600;">
             document.getElementById("total").innerText = total.toFixed(2);
         }
 
+        // ✅ ONLY CHANGE: checkout function
         function checkout() {
             if (Object.keys(cart).length === 0) {
                 Swal.fire("Empty Cart", "Add items first", "warning");
@@ -330,21 +304,31 @@ font-weight:600;">
                 title: "Customer Details",
                 html: `
 <input id="name" class="swal2-input" placeholder="Name">
-<input id="phone" class="swal2-input" placeholder="Phone" maxlength="10" inputmode="numeric">
+<input id="phone" class="swal2-input" placeholder="Phone" maxlength="10">
 <input id="gst" class="swal2-input" placeholder="GST">
 `,
                 confirmButtonText: "Generate Bill",
+                showCancelButton: true,
+                cancelButtonText: "Cancel Order",
+
                 preConfirm: () => {
 
                     let name = document.getElementById("name").value;
                     let phone = document.getElementById("phone").value;
                     let gst = document.getElementById("gst").value;
 
-                    // ✅ PHONE VALIDATION (India - 10 digits starting 6-9)
-                    let phoneRegex = /^[6-9]\d{9}$/;
+                    if (name === "") {
+                        Swal.showValidationMessage("Name is required");
+                        return false;
+                    }
 
-                    if (phone !== "" && !phoneRegex.test(phone)) {
-                        Swal.showValidationMessage("Enter valid 10-digit Indian phone number");
+                    if (phone === "") {
+                        Swal.showValidationMessage("Phone number is required");
+                        return false;
+                    }
+
+                    if (!/^[0-9]{10}$/.test(phone)) {
+                        Swal.showValidationMessage("Enter valid 10-digit mobile number");
                         return false;
                     }
 
@@ -355,6 +339,13 @@ font-weight:600;">
                     };
                 }
             }).then(r => {
+
+                // ✅ CANCEL → clear cart only
+                if (r.dismiss) {
+                    cart = {};
+                    renderCart();
+                    return;
+                }
 
                 if (r.isConfirmed) {
 
@@ -368,15 +359,7 @@ font-weight:600;">
                                 customer: r.value
                             })
                         })
-                        .then(async res => {
-
-                            if (!res.ok) {
-                                let text = await res.text();
-                                throw new Error(text);
-                            }
-
-                            return res.blob();
-                        })
+                        .then(res => res.blob())
                         .then(blob => {
 
                             let url = URL.createObjectURL(blob);
@@ -387,35 +370,8 @@ font-weight:600;">
 
                             Swal.fire("Success", "Invoice Downloaded", "success");
 
-                            /* 🔥 UPDATE STOCK LIVE */
-                            for (let id in cart) {
-
-                                let qtySold = cart[id].qty;
-
-                                let card = document.querySelector(`.productCard[data-id="${id}"]`);
-                                let stockText = card.querySelector(".stockText");
-
-                                let currentStock = parseInt(card.dataset.stock);
-                                let newStock = currentStock - qtySold;
-
-                                card.dataset.stock = newStock;
-
-                                if (newStock <= 0) {
-                                    stockText.innerText = "Out of Stock";
-                                    stockText.style.color = "red";
-                                    card.classList.add("out");
-                                } else if (newStock < 10) {
-                                    stockText.innerText = `Low Stock (${newStock})`;
-                                    stockText.style.color = "orange";
-                                } else {
-                                    stockText.innerText = `In Stock (${newStock})`;
-                                    stockText.style.color = "green";
-                                }
-                            }
-
                             cart = {};
                             renderCart();
-
                         });
                 }
             });
