@@ -1,8 +1,6 @@
 fetch("database/dashboard-data.php")
   .then((res) => res.json())
   .then((data) => {
-    /* PIE CHART - ORDER STATUS */
-
     let statusData = [];
 
     data.status.forEach((row) => {
@@ -15,7 +13,9 @@ fetch("database/dashboard-data.php")
     Highcharts.chart("orderStatusChart", {
       chart: { type: "pie" },
       title: { text: "" },
-
+      tooltip: {
+        pointFormat: "Orders: <b>{point.y}</b><br/>Share: <b>{point.percentage:.1f}%</b>",
+      },
       series: [
         {
           name: "Orders",
@@ -23,8 +23,6 @@ fetch("database/dashboard-data.php")
         },
       ],
     });
-
-    /* BAR CHART - SUPPLIER PRODUCT COUNT */
 
     let supplierNames = [];
     let supplierCounts = [];
@@ -37,24 +35,36 @@ fetch("database/dashboard-data.php")
     Highcharts.chart("supplierProductChart", {
       chart: { type: "column" },
       title: { text: "" },
-
       xAxis: {
         categories: supplierNames,
+        crosshair: true,
       },
-
       yAxis: {
-        title: { text: "Product Count" },
+        title: { text: "Total Orders" },
       },
+      tooltip: {
+        useHTML: true,
+        formatter: function () {
+          const total = this.series.data.reduce((sum, point) => sum + point.y, 0);
+          const percent = total === 0 ? 0 : ((this.y / total) * 100).toFixed(1);
+          const supplierName = this.point.category || this.key || "";
 
+          return `
+            <div style="padding:8px;">
+              <b>${supplierName}</b><br/>
+              Orders: <b>${this.y}</b><br/>
+              Share: <b>${percent}%</b>
+            </div>
+          `;
+        },
+      },
       series: [
         {
-          name: "Suppliers",
+          name: "Orders",
           data: supplierCounts,
         },
       ],
     });
-
-    /* LINE CHART - DELIVERY HISTORY */
 
     let days = [];
     let deliveries = [];
@@ -66,15 +76,14 @@ fetch("database/dashboard-data.php")
 
     Highcharts.chart("deliveryHistoryChart", {
       chart: { type: "line" },
-
       title: { text: "" },
-
       xAxis: { categories: days },
-
+      tooltip: {
+        shared: true,
+      },
       yAxis: {
         title: { text: "Product Delivered" },
       },
-
       series: [
         {
           name: "Product Delivered",

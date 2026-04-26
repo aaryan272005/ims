@@ -1,13 +1,12 @@
 <?php
-session_start();
 
-/* Unset all session variables */
+require_once __DIR__ . '/../partials/security.php';
+
+require_login('../login.php');
+require_post_csrf(false, '../dashboard.php');
+
 $_SESSION = [];
-
-/* Destroy the session */
 session_destroy();
 
-/* Redirect to login page */
-header("Location: ../login.php");
+header('Location: ../login.php');
 exit();
-?>

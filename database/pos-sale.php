@@ -1,28 +1,36 @@
 <?php
-
 session_start();
 include('connection.php');
 
 require_once __DIR__ . '/../fpdf186/fpdf.php';
 
-/* ================= GET DATA ================= */
+/* ================= INPUT ================= */
 
-$data = json_decode(file_get_contents("php://input"), true);
+$raw = file_get_contents("php://input");
+$data = json_decode($raw, true);
+
+if (!$data) {
+    http_response_code(400);
+    die("Invalid JSON");
+}
 
 $cart = $data['cart'] ?? [];
 $customer = $data['customer'] ?? [];
 
-$name = $customer['name'] ?? 'Walk-in Customer';
-$phone = $customer['phone'] ?? '-';
-$gst = $customer['gst'] ?? '-';
-
 /* ================= VALIDATION ================= */
 
-if (empty($cart)) {
+if (!is_array($cart) || empty($cart)) {
+    http_response_code(400);
     die("Cart is empty");
 }
 
-/* ================= STOCK UPDATE ================= */
+$name = trim($customer['name'] ?? 'Walk-in Customer');
+$phone = trim($customer['phone'] ?? '-');
+$gst = trim($customer['gst'] ?? '-');
+
+if ($name === '') $name = "Walk-in Customer";
+
+/* ================= STOCK + SALES ================= */
 
 try {
 
@@ -30,18 +38,36 @@ try {
 
     foreach ($cart as $product_id => $item) {
 
-        $qty = intval($item['qty']);
+        /* VALIDATE EACH ITEM */
+        if (
+            !isset($item['qty'], $item['price'], $item['name']) ||
+            !is_numeric($item['qty']) ||
+            !is_numeric($item['price'])
+        ) {
+            throw new Exception("Invalid cart data");
+        }
 
-        // 🔥 CHECK CURRENT STOCK
+        $qty = intval($item['qty']);
+        $price = floatval($item['price']);
+
+        if ($qty <= 0 || $price < 0) {
+            throw new Exception("Invalid quantity or price");
+        }
+
+        /* CHECK STOCK */
         $stmt = $conn->prepare("SELECT quantity FROM stock WHERE product_id = ?");
         $stmt->execute([$product_id]);
         $current_stock = $stmt->fetchColumn();
 
-        if ($current_stock < $qty) {
-            throw new Exception("Not enough stock for product ID: " . $product_id);
+        if ($current_stock === false) {
+            throw new Exception("Product not found: $product_id");
         }
 
-        // 🔥 REDUCE STOCK
+        if ($current_stock < $qty) {
+            throw new Exception("Not enough stock for product ID: $product_id");
+        }
+
+        /* UPDATE STOCK */
         $stmt = $conn->prepare("
             UPDATE stock 
             SET quantity = quantity - ? 
@@ -49,7 +75,7 @@ try {
         ");
         $stmt->execute([$qty, $product_id]);
 
-        // 🔥 OPTIONAL: STORE SALES HISTORY
+        /* SAVE SALE */
         $stmt = $conn->prepare("
             INSERT INTO sales (product_id, quantity, created_at)
             VALUES (?, ?, NOW())
@@ -58,12 +84,13 @@ try {
     }
 
     $conn->commit();
+
 } catch (Exception $e) {
 
     $conn->rollBack();
-    die("Error: " . $e->getMessage());
+    http_response_code(500);
+    die($e->getMessage());
 }
-
 
 /* ================= CALCULATIONS ================= */
 
@@ -76,21 +103,23 @@ foreach ($cart as $item) {
 $gst_amount = $subtotal * 0.18;
 $total = $subtotal + $gst_amount;
 
-
-/* ================= PDF INVOICE ================= */
+/* ================= PDF ================= */
 
 $pdf = new FPDF();
 $pdf->AddPage();
 
 /* LOGO */
-$pdf->Image(__DIR__ . '/../images/logo.png', 80, 10, 50);
+if (file_exists(__DIR__ . '/../images/logo.png')) {
+    $pdf->Image(__DIR__ . '/../images/logo.png', 80, 10, 50);
+}
+
+$pdf->Ln(30);
 
 /* TITLE */
-$pdf->Ln(30);
 $pdf->SetFont('Arial', 'B', 16);
 $pdf->Cell(0, 10, 'TAX INVOICE', 0, 1, 'C');
 
-/* COMPANY DETAILS */
+/* COMPANY */
 $pdf->SetFont('Arial', '', 10);
 $pdf->Cell(0, 6, 'VyaparTrack Pvt Ltd', 0, 1, 'C');
 $pdf->Cell(0, 6, 'Mumbai, India', 0, 1, 'C');
@@ -98,7 +127,7 @@ $pdf->Cell(0, 6, 'GSTIN: 27ABCDE1234F1Z5', 0, 1, 'C');
 
 $pdf->Ln(5);
 
-/* CUSTOMER DETAILS */
+/* CUSTOMER */
 $pdf->SetFont('Arial', '', 11);
 $pdf->Cell(0, 6, 'Customer: ' . $name, 0, 1);
 $pdf->Cell(0, 6, 'Phone: ' . $phone, 0, 1);
@@ -106,7 +135,7 @@ $pdf->Cell(0, 6, 'Customer GST: ' . $gst, 0, 1);
 
 $pdf->Ln(5);
 
-/* TABLE HEADER */
+/* TABLE */
 $pdf->SetFont('Arial', 'B', 11);
 $pdf->Cell(60, 8, 'Product', 1);
 $pdf->Cell(30, 8, 'Price', 1);
@@ -114,7 +143,6 @@ $pdf->Cell(30, 8, 'Qty', 1);
 $pdf->Cell(40, 8, 'Total', 1);
 $pdf->Ln();
 
-/* TABLE DATA */
 $pdf->SetFont('Arial', '', 11);
 
 foreach ($cart as $item) {
@@ -145,13 +173,6 @@ $pdf->Cell(120, 8, '', 0);
 $pdf->SetFont('Arial', 'B', 12);
 $pdf->Cell(30, 10, 'Total', 1);
 $pdf->Cell(40, 10, 'Rs ' . number_format($total, 2), 1);
-$pdf->Ln();
 
-/* FOOTER */
-$pdf->Ln(10);
-$pdf->SetFont('Arial', 'I', 10);
-$pdf->Cell(0, 6, 'Thank you for your business!', 0, 1, 'C');
-
-/* OUTPUT PDF */
 $pdf->Output('D', 'invoice.pdf');
-exit();
+exit;

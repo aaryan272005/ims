@@ -1,239 +1,143 @@
 <?php
 
-session_start();
-include('connection.php');
+require_once __DIR__ . '/../partials/security.php';
+require_once __DIR__ . '/../partials/validation.php';
+require_once __DIR__ . '/connection.php';
 
-// ✅ AUTH CHECK (FIXED)
-if (!isset($_SESSION['user_id'])) {
-    die("Unauthorized access");
-}
+require_admin(false, '../dashboard.php');
 
-// ✅ ADMIN ONLY (SAFE CHECK)
-if (($_SESSION['role'] ?? '') !== 'admin') {
+$redirect = $_SESSION['redirect_to'] ?? 'dashboard.php';
+require_post_csrf(false, "../{$redirect}");
+
+$table_name = $_SESSION['table'] ?? '';
+$user_id = (int) ($_SESSION['user_id'] ?? 0);
+$allowed_tables = ['products', 'supplier', 'users'];
+
+if (!in_array($table_name, $allowed_tables, true)) {
     $_SESSION['response'] = [
         'success' => false,
-        'message' => 'Access Denied - Admin Only'
+        'message' => 'Invalid request',
     ];
-
-    $redirect = $_SESSION['redirect_to'] ?? 'dashboard.php';
-    header("location: ../$redirect");
+    header("Location: ../{$redirect}");
     exit();
 }
 
-$table_name = $_SESSION['table'] ?? '';
-$user_id = $_SESSION['user_id'];
+try {
+    if ($table_name === 'products') {
+        $payload = validate_product_payload(
+            (string) ($_POST['product_name'] ?? ''),
+            (string) ($_POST['description'] ?? ''),
+            $_POST['price'] ?? null,
+            $_POST['suppliers'] ?? []
+        );
 
-// ✅ ALLOWED TABLES (SECURITY)
-$allowed_tables = ['products', 'supplier', 'users'];
+        $image_name = '';
+        if (isset($_FILES['img']) && (int) ($_FILES['img']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+            $img = $_FILES['img'];
+            $allowed_types = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!in_array((string) ($img['type'] ?? ''), $allowed_types, true)) {
+                throw new InvalidArgumentException('Invalid image type');
+            }
 
-if (!in_array($table_name, $allowed_tables)) {
-    die("Invalid table");
-}
+            $image_name = time() . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', basename((string) $img['name']));
+            $upload_dir = __DIR__ . '/../uploads/products/';
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
 
-// Default redirect
-$redirect = $_SESSION['redirect_to'] ?? 'product-add.php';
-
-/* ================= PRODUCT ADD ================= */
-
-if ($table_name == 'products') {
-
-    $product_name = trim($_POST['product_name'] ?? '');
-    $description  = trim($_POST['description'] ?? '');
-    $suppliers    = $_POST['suppliers'] ?? [];
-    $price = $_POST['price'] ?? 0;
-
-    if (empty($product_name) || empty($description)) {
-        $_SESSION['response'] = [
-            'success' => false,
-            'message' => 'All fields are required'
-        ];
-        header("location: ../product-add.php");
-        exit();
-    }
-
-    $image_name = '';
-
-    if (isset($_FILES['img']) && $_FILES['img']['error'] == 0) {
-
-        $img = $_FILES['img'];
-        $allowed_types = ['image/jpeg', 'image/png', 'image/webp'];
-
-        if (!in_array($img['type'], $allowed_types)) {
-            $_SESSION['response'] = [
-                'success' => false,
-                'message' => 'Invalid image type'
-            ];
-            header("location: ../product-add.php");
-            exit();
+            if (!move_uploaded_file((string) $img['tmp_name'], $upload_dir . $image_name)) {
+                throw new RuntimeException('Unable to upload product image');
+            }
         }
-
-        $image_name = time() . '_' . basename($img['name']);
-        $upload_dir = "../uploads/products/";
-
-        if (!is_dir($upload_dir)) {
-            mkdir($upload_dir, 0777, true);
-        }
-
-        move_uploaded_file($img['tmp_name'], $upload_dir . $image_name);
-    }
-
-    try {
 
         $conn->beginTransaction();
 
-        $stmt = $conn->prepare("
-            INSERT INTO products 
-            (product_name, description, price, img, created_by, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-        ");
-
+        $stmt = $conn->prepare(
+            'INSERT INTO products (product_name, description, price, img, created_by, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, NOW(), NOW())'
+        );
         $stmt->execute([
-            $product_name,
-            $description,
-            $price,
+            $payload['product_name'],
+            $payload['description'],
+            $payload['price'],
             $image_name,
-            $user_id
+            $user_id,
         ]);
-        if ($price <= 0) {
-            $_SESSION['response'] = [
-                'success' => false,
-                'message' => 'Price must be greater than 0'
-            ];
-            header("location: ../product-add.php");
-            exit();
-        }
 
-        $product_id = $conn->lastInsertId();
+        $product_id = (int) $conn->lastInsertId();
+        $mapStmt = $conn->prepare(
+            'INSERT INTO product_supplier_map (product_id, supplier_id, created_at, updated_at)
+             VALUES (?, ?, NOW(), NOW())'
+        );
 
-        foreach ($suppliers as $supplier) {
-
-            $stmt = $conn->prepare("
-                INSERT INTO productsupplier (supplier, product) 
-                VALUES (?, ?)
-            ");
-
-            $stmt->execute([$supplier, $product_id]);
+        foreach ($payload['suppliers'] as $supplierId) {
+            $mapStmt->execute([$product_id, $supplierId]);
         }
 
         $conn->commit();
 
         $_SESSION['response'] = [
             'success' => true,
-            'message' => 'Product created successfully'
+            'message' => 'Product created successfully',
         ];
-    } catch (PDOException $e) {
+    } elseif ($table_name === 'supplier') {
+        $payload = validate_supplier_payload(
+            (string) ($_POST['supplier_name'] ?? ''),
+            (string) ($_POST['supplier_location'] ?? ''),
+            (string) ($_POST['email'] ?? '')
+        );
 
-        if ($conn->inTransaction()) {
-            $conn->rollBack();
-        }
-
-        $_SESSION['response'] = [
-            'success' => false,
-            'message' => 'Error: ' . $e->getMessage()
-        ];
-    }
-}
-
-
-/* ================= SUPPLIER ADD ================= */
-
-if ($table_name == 'supplier') {
-
-    $supplier_name     = trim($_POST['supplier_name'] ?? '');
-    $supplier_location = trim($_POST['supplier_location'] ?? '');
-    $email             = trim($_POST['email'] ?? '');
-
-    if (empty($supplier_name) || empty($supplier_location) || empty($email)) {
-        $_SESSION['response'] = [
-            'success' => false,
-            'message' => 'All fields are required'
-        ];
-        header("location: ../supplier-add.php");
-        exit();
-    }
-
-    try {
-
-        $stmt = $conn->prepare("
-            INSERT INTO supplier 
-            (supplier_name, supplier_location, email, created_by, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, NOW(), NOW())
-        ");
-
+        $stmt = $conn->prepare(
+            'INSERT INTO supplier (supplier_name, supplier_location, email, created_by, created_at, updated_at)
+             VALUES (?, ?, ?, ?, NOW(), NOW())'
+        );
         $stmt->execute([
-            $supplier_name,
-            $supplier_location,
-            $email,
-            $user_id
+            $payload['supplier_name'],
+            $payload['supplier_location'],
+            $payload['email'],
+            $user_id,
         ]);
 
         $_SESSION['response'] = [
             'success' => true,
-            'message' => 'Supplier created successfully'
+            'message' => 'Supplier created successfully',
         ];
-    } catch (PDOException $e) {
+    } elseif ($table_name === 'users') {
+        $payload = validate_user_payload(
+            (string) ($_POST['first_name'] ?? ''),
+            (string) ($_POST['last_name'] ?? ''),
+            (string) ($_POST['email'] ?? ''),
+            (string) ($_POST['password'] ?? '')
+        );
+        $role = validate_user_role((string) ($_POST['role'] ?? 'user'));
 
-        $_SESSION['response'] = [
-            'success' => false,
-            'message' => 'Error: ' . $e->getMessage()
-        ];
-    }
-}
-
-
-/* ================= USER ADD ================= */
-
-if ($table_name == 'users') {
-
-    $first_name = trim($_POST['first_name'] ?? '');
-    $last_name  = trim($_POST['last_name'] ?? '');
-    $email      = trim($_POST['email'] ?? '');
-    $password   = $_POST['password'] ?? '';
-
-    if (empty($first_name) || empty($last_name) || empty($email) || empty($password)) {
-        $_SESSION['response'] = [
-            'success' => false,
-            'message' => 'All fields are required'
-        ];
-        header("location: ../users-add.php");
-        exit();
-    }
-
-    $password = password_hash($password, PASSWORD_DEFAULT);
-
-    try {
-
-        $stmt = $conn->prepare("
-            INSERT INTO users
-            (first_name, last_name, email, password, role, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'user', NOW(), NOW())
-        ");
-
+        $stmt = $conn->prepare(
+            'INSERT INTO users (first_name, last_name, email, password, role, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, NOW(), NOW())'
+        );
         $stmt->execute([
-            $first_name,
-            $last_name,
-            $email,
-            $password
+            $payload['first_name'],
+            $payload['last_name'],
+            $payload['email'],
+            password_hash($payload['password'], PASSWORD_DEFAULT),
+            $role,
         ]);
 
         $_SESSION['response'] = [
             'success' => true,
-            'message' => 'User successfully added.'
-        ];
-    } catch (PDOException $e) {
-
-        $_SESSION['response'] = [
-            'success' => false,
-            'message' => $e->getMessage()
+            'message' => 'User successfully added.',
         ];
     }
+} catch (Throwable $e) {
+    if ($conn->inTransaction()) {
+        $conn->rollBack();
+    }
 
-    header("location: ../users-add.php");
-    exit();
+    $_SESSION['response'] = [
+        'success' => false,
+        'message' => $e instanceof InvalidArgumentException ? $e->getMessage() : 'Unable to save your changes right now',
+    ];
 }
 
-
-/* ================= FINAL REDIRECT ================= */
-
-header("location: ../$redirect");
+header("Location: ../{$redirect}");
 exit();

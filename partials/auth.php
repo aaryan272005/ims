@@ -1,8 +1,4 @@
 <?php
-session_start();
-
-if (!isset($_SESSION['user'])) {
-    header("Location: login.php");
-    exit();
-}
+require_once __DIR__ . '/security.php';
+require_login('login.php');
 ?>

@@ -1,6 +1,8 @@
 <?php
-// Start the session
-session_start();
+require_once __DIR__ . '/partials/security.php';
+
+start_secure_session();
+ensure_csrf_token();
 
 if (isset($_SESSION['user_id'])) {
     header('Location: dashboard.php');
@@ -9,40 +11,38 @@ if (isset($_SESSION['user_id'])) {
 
 $error_message = '';
 
-if ($_POST) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     include('database/connection.php');
 
-    $username = $_POST['username'] ?? '';
-    $password = $_POST['password'] ?? '';
+    if (!verify_csrf_token($_POST['csrf_token'] ?? null)) {
+        $error_message = 'Invalid request';
+    } else {
+        $username = trim($_POST['username'] ?? '');
+        $password = $_POST['password'] ?? '';
 
-    // ✅ SECURE QUERY (NO SQL INJECTION)
-    $query = "SELECT * FROM users WHERE email = :email LIMIT 1";
-    $stmt = $conn->prepare($query);
-    $stmt->bindParam(':email', $username);
-    $stmt->execute();
+        $query = "SELECT * FROM users WHERE email = :email LIMIT 1";
+        $stmt = $conn->prepare($query);
+        $stmt->bindParam(':email', $username);
+        $stmt->execute();
 
-    if ($stmt->rowCount() > 0) {
+        if ($stmt->rowCount() > 0) {
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (password_verify($password, $user['password'])) {
+                session_regenerate_id(true);
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['user'] = $user;
+                $_SESSION['role'] = $user['role'] ?? 'user';
+                $_SESSION['logged_in'] = true;
 
-        // ✅ PASSWORD VERIFY (IMPORTANT FIX)
-        if (password_verify($password, $user['password'])) {
-
-            // SESSION DATA
-            $_SESSION['user_id'] = $user['id'];   // backend use
-            $_SESSION['user'] = $user;           // UI use
-            $_SESSION['role'] = $user['role'] ?? 'user';
-            $_SESSION['logged_in'] = true;
-
-            header('Location: dashboard.php');
-            exit();
-
-        } else {
-            $error_message = 'Invalid password';
+                header('Location: dashboard.php');
+                exit();
+            }
         }
 
-    } else {
-        $error_message = 'User not found';
+        if ($error_message === '') {
+            $error_message = 'Invalid email or password';
+        }
     }
 }
 ?>
@@ -75,7 +75,6 @@ if ($_POST) {
             }
         }
 
-        // Auto hide error
         setTimeout(() => {
             let error = document.getElementById("error-message");
             if (error) {
@@ -105,6 +104,7 @@ if ($_POST) {
             </div>
 
             <form action="login.php" method="POST" class="login-form">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
 
                 <div class="input-group">
                     <div class="input-icon">
@@ -137,5 +137,7 @@ if ($_POST) {
         </div>
     </div>
 
+    <script src="js/tooltips.js?v=<?= filemtime(__DIR__ . '/js/tooltips.js') ?>"></script>
 </body>
+
 </html>

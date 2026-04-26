@@ -1,13 +1,16 @@
 <?php
-session_start();
+require_once __DIR__ . '/partials/security.php';
 
-if (!isset($_SESSION['user'])) {
-    header('Location: login.php');
+require_login('login.php');
+
+if (($_SESSION['role'] ?? '') !== 'admin') {
+    $_SESSION['response'] = [
+        'success' => false,
+        'message' => 'You have view-only access. User creation is admin only.',
+    ];
+    header('Location: users-view.php');
     exit();
 }
-
-// ✅ ADMIN CHECK
-$isAdmin = ($_SESSION['role'] ?? '') === 'admin';
 
 $_SESSION['table'] = 'users';
 $_SESSION['redirect_to'] = 'users-add.php';
@@ -21,7 +24,7 @@ $_SESSION['redirect_to'] = 'users-add.php';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Add Users ~VyaparTrack</title>
+    <title>Add Users ~ VyaparTrack</title>
 
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -45,57 +48,37 @@ $_SESSION['redirect_to'] = 'users-add.php';
                         <i class="fa fa-plus"></i> Create User
                     </h1>
 
-                    <!-- ⚠ WARNING -->
-                    <?php if (!$isAdmin): ?>
-                        <div style="background:#ffe0e0;color:#b30000;padding:10px;border-radius:5px;margin-bottom:15px;">
-                            ⚠ You do not have permission to perform this action. Only admins can create users.
-                        </div>
-                    <?php endif; ?>
-
-
                     <div id="userAddFormContainer">
 
                         <form action="database/add.php" method="POST" class="userForm">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
 
                             <label>First Name:</label>
-                            <input type="text" name="first_name" <?= !$isAdmin ? 'disabled' : '' ?>>
+                            <input type="text" name="first_name" maxlength="50" required>
 
                             <label>Last Name:</label>
-                            <input type="text" name="last_name" <?= !$isAdmin ? 'disabled' : '' ?>>
+                            <input type="text" name="last_name" maxlength="50" required>
 
                             <label>Email:</label>
-                            <input type="email" name="email" <?= !$isAdmin ? 'disabled' : '' ?>>
+                            <input type="email" name="email" maxlength="100" required>
 
                             <label>Password:</label>
-                            <input type="password" name="password" <?= !$isAdmin ? 'disabled' : '' ?>>
+                            <input type="password" name="password" minlength="8" required>
 
-                            <!-- ✅ BUTTON CONTROL -->
-                            <?php if ($isAdmin): ?>
-                                <button type="submit" class="userFormBtn">
-                                    <i class="fa fa-plus"></i> Add User
-                                </button>
-                            <?php else: ?>
-                                <button type="button" class="userFormBtn" style="background:#ccc;cursor:not-allowed;">
-                                    🔒 Admin Only
-                                </button>
-                            <?php endif; ?>
+                            <label>Access Role:</label>
+                            <select name="role" required>
+                                <option value="user" selected>User Access</option>
+                                <option value="sales">Sales Access</option>
+                                <option value="admin">Admin Access</option>
+                            </select>
+
+                            <button type="submit" class="userFormBtn">
+                                <i class="fa fa-plus"></i> Add User
+                            </button>
 
                         </form>
 
-                        <!-- RESPONSE MESSAGE -->
-                        <?php
-                        if (isset($_SESSION['response'])) {
-                            $response = $_SESSION['response'];
-                        ?>
-                            <div class="responseMessage">
-                                <p class="<?= $response['success'] ? 'successMessage' : 'errorMessage' ?>">
-                                    <?= $response['message'] ?>
-                                </p>
-                            </div>
-                        <?php
-                            unset($_SESSION['response']);
-                        }
-                        ?>
+                        <?php include('partials/flash-response.php'); ?>
 
                     </div>
 
@@ -108,6 +91,7 @@ $_SESSION['redirect_to'] = 'users-add.php';
     </div>
 
     <script src="js/dashboard.js"></script>
+    <script src="js/tooltips.js?v=<?= filemtime(__DIR__ . '/js/tooltips.js') ?>"></script>
 
 </body>
 

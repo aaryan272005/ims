@@ -321,20 +321,39 @@ font-weight:600;">
         }
 
         function checkout() {
+            if (Object.keys(cart).length === 0) {
+                Swal.fire("Empty Cart", "Add items first", "warning");
+                return;
+            }
 
             Swal.fire({
                 title: "Customer Details",
                 html: `
 <input id="name" class="swal2-input" placeholder="Name">
-<input id="phone" class="swal2-input" placeholder="Phone">
+<input id="phone" class="swal2-input" placeholder="Phone" maxlength="10" inputmode="numeric">
 <input id="gst" class="swal2-input" placeholder="GST">
 `,
                 confirmButtonText: "Generate Bill",
-                preConfirm: () => ({
-                    name: document.getElementById("name").value,
-                    phone: document.getElementById("phone").value,
-                    gst: document.getElementById("gst").value
-                })
+                preConfirm: () => {
+
+                    let name = document.getElementById("name").value;
+                    let phone = document.getElementById("phone").value;
+                    let gst = document.getElementById("gst").value;
+
+                    // ✅ PHONE VALIDATION (India - 10 digits starting 6-9)
+                    let phoneRegex = /^[6-9]\d{9}$/;
+
+                    if (phone !== "" && !phoneRegex.test(phone)) {
+                        Swal.showValidationMessage("Enter valid 10-digit Indian phone number");
+                        return false;
+                    }
+
+                    return {
+                        name,
+                        phone,
+                        gst
+                    };
+                }
             }).then(r => {
 
                 if (r.isConfirmed) {
@@ -349,7 +368,15 @@ font-weight:600;">
                                 customer: r.value
                             })
                         })
-                        .then(res => res.blob())
+                        .then(async res => {
+
+                            if (!res.ok) {
+                                let text = await res.text();
+                                throw new Error(text);
+                            }
+
+                            return res.blob();
+                        })
                         .then(blob => {
 
                             let url = URL.createObjectURL(blob);

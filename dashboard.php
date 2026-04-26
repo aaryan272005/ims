@@ -1,54 +1,35 @@
 <?php
+require_once __DIR__ . '/partials/security.php';
+require_once __DIR__ . '/database/connection.php';
 
-require_once('partials/auth.php');
-require_once('database/connection.php');
+require_login('login.php');
 
-/* FETCH USER DATA */
-
-// ✅ use user_id (correct session variable)
-$user_id = $_SESSION['user_id'] ?? 0;
-
-// safety check
-if (!$user_id) {
-    die("Invalid session");
+$user_id = (int) ($_SESSION['user_id'] ?? 0);
+if ($user_id <= 0) {
+    die('Invalid session');
 }
 
-$stmt = $conn->prepare("SELECT * FROM users WHERE id = :id");
+$stmt = $conn->prepare('SELECT * FROM users WHERE id = :id');
 $stmt->bindParam(':id', $user_id);
 $stmt->execute();
-
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-// fallback safety
 if (!$user) {
-    die("User not found");
+    die('User not found');
 }
 
-// ✅ safe role handling
 $role = $_SESSION['role'] ?? 'user';
 
-/* DETECT CURRENT PAGE */
-$current_page = basename($_SERVER['PHP_SELF']);
+$stmt = $conn->query('SELECT COUNT(*) as total FROM products');
+$products = (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
+$stmt = $conn->query('SELECT COUNT(*) as total FROM supplier');
+$supplier = (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
-/* ================= DASHBOARD COUNTS ================= */
+$stmt = $conn->query('SELECT COUNT(*) as total FROM users');
+$total_users = (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
-// Total Products
-$stmt = $conn->query("SELECT COUNT(*) as total FROM products");
-$products = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-// Total Suppliers
-$stmt = $conn->query("SELECT COUNT(*) as total FROM supplier");
-$supplier = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-// Total Users
-$stmt = $conn->query("SELECT COUNT(*) as total FROM users");
-$total_users = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-// Total Orders
-$stmt = $conn->query("SELECT COUNT(*) as total FROM productsupplier");
-$total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
+$stmt = $conn->query('SELECT COUNT(*) as total FROM purchase_orders');
+$total_orders = (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 ?>
 
 <!DOCTYPE html>
@@ -61,13 +42,8 @@ $total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
     <title>Dashboard ~ VyaparTrack</title>
 
-    <!-- MAIN CSS -->
     <link rel="stylesheet" href="css/dashboard.css">
-
-    <!-- FONT AWESOME -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
-    <!-- HIGHCHARTS -->
     <script src="https://code.highcharts.com/highcharts.js"></script>
 
     <style>
@@ -134,38 +110,48 @@ $total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
     <div id="DashboardMainContainer">
 
-        <!-- SIDEBAR -->
         <?php include('partials/app-sidebar.php'); ?>
 
-        <!-- MAIN CONTENT -->
         <div class="DashboardContent_container" id="DashboardContent_container">
 
-            <!-- TOP NAV -->
             <?php include('partials/app-topNav.php'); ?>
 
-            <!-- PAGE CONTENT -->
             <div class="dashboardContent">
 
                 <div class="dashboard_content_main">
 
                     <h2>
-                        Welcome, <?= htmlspecialchars($user['first_name']); ?> (<?= htmlspecialchars($role); ?>) 👋
+                        Welcome, <?= htmlspecialchars($user['first_name'], ENT_QUOTES, 'UTF-8'); ?> (<?= htmlspecialchars($role, ENT_QUOTES, 'UTF-8'); ?>)
                     </h2>
 
+                    <?php include('partials/flash-response.php'); ?>
+
                     <p>
-                        This is your dashboard. Use the sidebar to manage reports, products, suppliers, orders and users.
+                        This is your dashboard. Use the sidebar to manage reports, products, suppliers, orders, and users.
                     </p>
 
-                    <!-- ADMIN INDICATOR -->
                     <?php if ($role === 'admin'): ?>
-                        <p style="color:green;"><b>You have admin access</b></p>
+                        <p style="color:green;"><b>You have admin access.</b></p>
+                    <?php elseif ($role === 'sales'): ?>
+                        <p style="color:#555;"><b>You have sales access.</b> You can manage POS, monitor the dashboard, and view product inventory.</p>
+                        <p>
+                            Quick links:
+                            <a href="product-view.php">View Products</a> |
+                            <a href="pos.php">POS Billing</a>
+                        </p>
+                    <?php else: ?>
+                        <p style="color:#555;"><b>You are in view-only mode.</b> You can monitor stock and orders while admin users handle create/update actions.</p>
+                        <p>
+                            Quick links:
+                            <a href="product-view.php">View Products</a> |
+                            <a href="order-view.php">View Orders</a> |
+                            <a href="reports.php">Reports</a>
+                        </p>
                     <?php endif; ?>
-
-                    <!-- DASHBOARD CARDS -->
 
                     <div class="dashboardCards">
 
-                        <div class="dashboardCard">
+                        <div class="dashboardCard" title="Total products in inventory">
                             <i class="fa fa-box"></i>
                             <div>
                                 <h3><?= $products ?></h3>
@@ -173,7 +159,7 @@ $total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
                             </div>
                         </div>
 
-                        <div class="dashboardCard">
+                        <div class="dashboardCard" title="Total registered suppliers">
                             <i class="fa fa-truck"></i>
                             <div>
                                 <h3><?= $supplier ?></h3>
@@ -181,7 +167,7 @@ $total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
                             </div>
                         </div>
 
-                        <div class="dashboardCard">
+                        <div class="dashboardCard" title="Total system users">
                             <i class="fa fa-users"></i>
                             <div>
                                 <h3><?= $total_users ?></h3>
@@ -189,7 +175,7 @@ $total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
                             </div>
                         </div>
 
-                        <div class="dashboardCard">
+                        <div class="dashboardCard" title="Total purchase orders">
                             <i class="fa fa-shopping-cart"></i>
                             <div>
                                 <h3><?= $total_orders ?></h3>
@@ -197,8 +183,6 @@ $total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
                             </div>
                         </div>
                     </div>
-
-                    <!-- DASHBOARD CHARTS -->
 
                     <div class="dashboardCharts">
 
@@ -208,7 +192,7 @@ $total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
                         </div>
 
                         <div class="chartBox">
-                            <h3>Product Count Assigned To Supplier</h3>
+                            <h3>Orders Handled by Each Supplier</h3>
                             <div id="supplierProductChart"></div>
                         </div>
 
@@ -226,11 +210,11 @@ $total_orders = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
     </div>
 
-    <!-- SCRIPTS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/10.3.3/highcharts.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="js/dashboard.js"></script>
-    <script src="js/dashboard-charts.js"></script>
+    <script src="js/dashboard-charts.js?v=<?= filemtime(__DIR__ . '/js/dashboard-charts.js') ?>"></script>
+    <script src="js/tooltips.js?v=<?= filemtime(__DIR__ . '/js/tooltips.js') ?>"></script>
     <script src="js/script.js"></script>
 
 </body>

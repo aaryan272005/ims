@@ -1,100 +1,55 @@
 <?php
 
-date_default_timezone_set('Asia/Kolkata');
+require_once __DIR__ . '/partials/security.php';
+require_once __DIR__ . '/database/connection.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_login('login.php');
+require_roles(['admin', 'user'], false, 'dashboard.php', 'Sales access is limited to dashboard, products, and POS.');
 
-if (!isset($_SESSION['user'])) {
-    header('Location: login.php');
-    exit();
-}
+$isAdmin = has_role('admin');
 
-// ✅ ADMIN CHECK
-$isAdmin = ($_SESSION['role'] ?? '') === 'admin';
-
-include('database/connection.php');
-
-$query = "SELECT 
-    s.id,
-    s.supplier_name,
-    s.supplier_location,
-    s.email,
-    s.created_by,
-    s.created_at,
-    s.updated_at,
-    u.first_name,
-    u.last_name,
-    GROUP_CONCAT(DISTINCT p.product_name SEPARATOR ', ') AS products
-FROM supplier s
-LEFT JOIN users u ON s.created_by = u.id
-LEFT JOIN productsupplier ps ON s.id = ps.supplier
-LEFT JOIN products p ON ps.product = p.id
-GROUP BY 
-    s.id,
-    s.supplier_name,
-    s.supplier_location,
-    s.email,
-    s.created_by,
-    s.created_at,
-    s.updated_at,
-    u.first_name,
-    u.last_name
-ORDER BY s.created_at DESC;
+$query = "
+    SELECT
+        s.id,
+        s.supplier_name,
+        s.supplier_location,
+        s.email,
+        s.created_at,
+        s.updated_at,
+        u.first_name,
+        u.last_name,
+        GROUP_CONCAT(DISTINCT p.product_name ORDER BY p.product_name SEPARATOR ', ') AS products
+    FROM supplier s
+    LEFT JOIN users u ON s.created_by = u.id
+    LEFT JOIN product_supplier_map psm ON psm.supplier_id = s.id
+    LEFT JOIN products p ON p.id = psm.product_id
+    GROUP BY s.id, s.supplier_name, s.supplier_location, s.email, s.created_at, s.updated_at, u.first_name, u.last_name
+    ORDER BY s.created_at DESC
 ";
-
 $stmt = $conn->prepare($query);
 $stmt->execute();
-
 $suppliers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
     <title>View Suppliers ~VyaparTrack</title>
-
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
 </head>
-
 <body>
-
     <div id="DashboardMainContainer">
-
         <?php include('partials/app-sidebar.php'); ?>
-
         <div class="DashboardContent_container">
-
             <?php include('partials/app-topNav.php'); ?>
-
             <div class="dashboardContent">
-
                 <div class="dashboard_content_main">
-
-                    <h1 class="section_header">
-                        <i class="fa fa-list"></i> List of Suppliers
-                    </h1>
-
-                    <!-- ⚠ WARNING -->
-                    <?php if (!$isAdmin): ?>
-                        <div style="background:#ffe0e0;color:#b30000;padding:10px;border-radius:5px;margin-bottom:15px;">
-                            ⚠ You have view-only access. Only admins can edit or delete suppliers.
-                        </div>
-                    <?php endif; ?>
-
+                    <h1 class="section_header"><i class="fa fa-list"></i> List of Suppliers</h1>
+                    <?php include('partials/flash-response.php'); ?>
                     <div class="users">
-
-                        <p class="userCount"><?= count($suppliers) ?> Suppliers</p>
-
+                        <p class="userCount supplierCount"><?= count($suppliers) ?> Suppliers</p>
                         <table class="suppliers">
-
                             <thead>
                                 <tr>
                                     <th>#</th>
@@ -108,95 +63,50 @@ $suppliers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <th>Action</th>
                                 </tr>
                             </thead>
-
                             <tbody>
-
-                                <?php foreach ($suppliers as $index => $supplier) { ?>
-
+                                <?php foreach ($suppliers as $index => $supplier): ?>
                                     <tr>
-
                                         <td><?= $index + 1 ?></td>
-
-                                        <td class="supplierName"><?= $supplier['supplier_name'] ?></td>
-
-                                        <td class="supplierLocation"><?= $supplier['supplier_location'] ?></td>
-
-                                        <td class="supplierEmail"><?= $supplier['email'] ?></td>
-
-                                        <td>
-                                            <?php
-                                            if (!empty($supplier['products'])) {
-                                                $products = explode(',', $supplier['products']);
-                                                echo "<ul>";
-                                                foreach ($products as $product) {
-                                                    echo "<li>" . trim($product) . "</li>";
-                                                }
-                                                echo "</ul>";
-                                            } else {
-                                                echo "-";
-                                            }
-                                            ?>
-                                        </td>
-
-                                        <td><?= $supplier['first_name'] . ' ' . $supplier['last_name'] ?></td>
-
-                                        <td><?= date('M d,Y  @h:i:s A', strtotime($supplier['created_at'])) ?></td>
-
-                                        <td><?= date('M d,Y  @h:i:s A', strtotime($supplier['updated_at'])) ?></td>
-
-                                        <!-- ACTION -->
+                                        <td class="supplierName"><?= htmlspecialchars($supplier['supplier_name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td class="supplierLocation"><?= htmlspecialchars($supplier['supplier_location'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td class="supplierEmail"><?= htmlspecialchars($supplier['email'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= $supplier['products'] !== null && $supplier['products'] !== '' ? htmlspecialchars($supplier['products'], ENT_QUOTES, 'UTF-8') : '-' ?></td>
+                                        <td><?= htmlspecialchars(trim(((string) $supplier['first_name']) . ' ' . ((string) $supplier['last_name'])), ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= date('M d,Y @h:i:s A', strtotime((string) $supplier['created_at'])) ?></td>
+                                        <td><?= date('M d,Y @h:i:s A', strtotime((string) $supplier['updated_at'])) ?></td>
                                         <td class="actionCell">
-
                                             <?php if ($isAdmin): ?>
-
                                                 <a href="#" class="action-btn editSupplier editBtn"
-                                                    data-id="<?= $supplier['id'] ?>"
-                                                    data-name="<?= $supplier['supplier_name'] ?>"
-                                                    data-location="<?= $supplier['supplier_location'] ?>"
-                                                    data-email="<?= $supplier['email'] ?>">
-
+                                                   data-id="<?= (int) $supplier['id'] ?>"
+                                                   data-name="<?= htmlspecialchars($supplier['supplier_name'], ENT_QUOTES, 'UTF-8') ?>"
+                                                   data-location="<?= htmlspecialchars($supplier['supplier_location'], ENT_QUOTES, 'UTF-8') ?>"
+                                                   data-email="<?= htmlspecialchars($supplier['email'], ENT_QUOTES, 'UTF-8') ?>"
+                                                   title="Edit this item">
                                                     <i class="fa fa-pencil"></i> Edit
                                                 </a>
-
                                                 <a href="#" class="action-btn deleteSupplier deleteBtn"
-                                                    data-id="<?= $supplier['id'] ?>"
-                                                    data-name="<?= $supplier['supplier_name'] ?>">
-
+                                                   data-id="<?= (int) $supplier['id'] ?>"
+                                                   data-name="<?= htmlspecialchars($supplier['supplier_name'], ENT_QUOTES, 'UTF-8') ?>"
+                                                   title="Delete this item">
                                                     <i class="fa fa-trash"></i> Delete
                                                 </a>
-
                                             <?php else: ?>
-
-                                                <span style="color:#999;">🔒 Admin Only</span>
-
+                                                <span style="color:#999;">View Only</span>
                                             <?php endif; ?>
-
                                         </td>
-
                                     </tr>
-
-                                <?php } ?>
-
+                                <?php endforeach; ?>
                             </tbody>
-
                         </table>
-
                     </div>
-
                 </div>
-
             </div>
-
         </div>
-
     </div>
-
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
     <script src="js/dashboard.js"></script>
+    <script src="js/tooltips.js?v=<?= filemtime(__DIR__ . '/js/tooltips.js') ?>"></script>
     <script src="js/script.js"></script>
-
 </body>
-
 </html>

@@ -1,3 +1,5 @@
+const ORDER_APP_CSRF_TOKEN = (window.appConfig && window.appConfig.csrfToken) || "";
+
 /* ================= UPDATE ORDER ================= */
 
 document.querySelectorAll(".updateOrderBtn").forEach((btn) => {
@@ -64,7 +66,7 @@ document.querySelectorAll(".updateOrderBtn").forEach((btn) => {
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
           },
-          body: `table=productsupplier&order_id=${id}&quantity_delivered=${qty}&status=${status}`,
+          body: `table=purchase_orders&order_id=${encodeURIComponent(id)}&quantity_delivered=${encodeURIComponent(qty)}&status=${encodeURIComponent(status)}&csrf_token=${encodeURIComponent(ORDER_APP_CSRF_TOKEN)}`,
         }).then((res) => res.json());
       },
     }).then((result) => {
@@ -146,7 +148,8 @@ $(document).on("click", ".deleteOrderBtn", function (e) {
         type: "POST",
         data: {
           id: orderId,
-          table: "productsupplier",
+          table: "purchase_orders",
+          csrf_token: ORDER_APP_CSRF_TOKEN,
         },
         dataType: "json",
 

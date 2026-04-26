@@ -1,0 +1,1 @@
+user_id|i:23;role|s:5:"admin";csrf_token|s:6:"tok123";pos_invoice_downloads|a:1:{s:32:"522e8e1d3b45c70eb9f4adb61599ec09";a:3:{s:4:"path";s:81:"C:\xampp\htdocs\ims\database/../tmp_invoices/522e8e1d3b45c70eb9f4adb61599ec09.pdf";s:4:"name";s:11:"invoice.pdf";s:10:"created_at";i:1777116976;}}

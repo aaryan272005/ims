@@ -1,89 +1,61 @@
 <?php
 
-session_start();
-include('connection.php');
+require_once __DIR__ . '/../partials/security.php';
+require_once __DIR__ . '/connection.php';
 
+require_admin(true);
 header('Content-Type: application/json');
 
-// ✅ AUTH CHECK
-if (!isset($_SESSION['user_id'])) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
-    exit();
-}
+require_post_csrf(true);
 
-// ✅ ADMIN ONLY
-if (($_SESSION['role'] ?? '') !== 'admin') {
-    $_SESSION['response'] = [
-        'success' => false,
-        'message' => 'Access Denied - Admin Only'
-    ];
+$id = (int) ($_POST['id'] ?? 0);
+$table = (string) ($_POST['table'] ?? '');
 
-    $redirect = $_SESSION['redirect_to'] ?? 'dashboard.php';
-    header("location: ../$redirect");
-    exit();
-}
-
-// INPUTS
-$id = intval($_POST['id'] ?? 0);
-$table = $_POST['table'] ?? '';
-
-if (!$id || !$table) {
+if ($id <= 0 || $table === '') {
+    http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'Invalid request']);
     exit();
 }
 
-// ✅ ALLOWED TABLES (SECURITY)
-$allowed_tables = ['products', 'supplier', 'productsupplier', 'users'];
-
-if (!in_array($table, $allowed_tables)) {
+$allowed_tables = ['products', 'supplier', 'purchase_orders', 'users'];
+if (!in_array($table, $allowed_tables, true)) {
+    http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'Invalid table']);
     exit();
 }
 
 try {
-
     $conn->beginTransaction();
 
-    /* ================= SPECIAL CASES ================= */
-
     if ($table === 'supplier') {
-
-        // Delete supplier relations first
-        $stmt = $conn->prepare("DELETE FROM productsupplier WHERE supplier = :id");
-        $stmt->execute([':id' => $id]);
-
+        $stmt = $conn->prepare('DELETE FROM product_supplier_map WHERE supplier_id = ?');
+        $stmt->execute([$id]);
     }
 
-    if ($table === 'users') {
-
-        // ✅ Prevent self delete (FIXED)
-        if ($id == $_SESSION['user_id']) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'You cannot delete yourself'
-            ]);
-            exit();
-        }
-
+    if ($table === 'products') {
+        $stmt = $conn->prepare('DELETE FROM product_supplier_map WHERE product_id = ?');
+        $stmt->execute([$id]);
     }
 
-    /* ================= MAIN DELETE ================= */
+    if ($table === 'users' && $id === (int) ($_SESSION['user_id'] ?? 0)) {
+        throw new InvalidArgumentException('You cannot delete yourself');
+    }
 
-    $stmt = $conn->prepare("DELETE FROM $table WHERE id = :id");
-    $stmt->execute([':id' => $id]);
+    $stmt = $conn->prepare("DELETE FROM {$table} WHERE id = ?");
+    $stmt->execute([$id]);
 
     $conn->commit();
-
     echo json_encode(['success' => true]);
-
-} catch (PDOException $e) {
-
+    exit();
+} catch (Throwable $e) {
     if ($conn->inTransaction()) {
         $conn->rollBack();
     }
 
+    http_response_code(422);
     echo json_encode([
         'success' => false,
-        'message' => $e->getMessage()
+        'message' => $e instanceof InvalidArgumentException ? $e->getMessage() : 'Unable to delete right now',
     ]);
+    exit();
 }

@@ -14,6 +14,8 @@ function reOrderTable(tableSelector, countSelector, label) {
   }
 }
 
+const SCRIPT_APP_CSRF_TOKEN = (window.appConfig && window.appConfig.csrfToken) || "";
+
 let message = $(".responseMessage");
 
 if (message.length) {
@@ -54,7 +56,8 @@ $(document).on("click", ".deleteUser", function (e) {
 
         data: { 
           id: userId, 
-          table: "users"   // ✅ FIXED
+          table: "users",
+          csrf_token: SCRIPT_APP_CSRF_TOKEN
         },
 
         dataType: "json",
@@ -123,6 +126,7 @@ $(document).on("click", ".editUser", function (e) {
           first_name: result.value.first_name,
           last_name: result.value.last_name,
           email: result.value.email,
+          csrf_token: SCRIPT_APP_CSRF_TOKEN,
         },
         dataType: "json",
 
@@ -177,7 +181,7 @@ $(document).on("click", ".deleteProduct", function (e) {
       $.ajax({
         method: "POST",
         url: "database/delete.php",
-        data: { id: productId, table: "products" },
+        data: { id: productId, table: "products", csrf_token: SCRIPT_APP_CSRF_TOKEN },
         dataType: "json",
 
         success: function (response) {
@@ -240,6 +244,7 @@ $(document).on("click", ".editProduct", function (e) {
       );
 
       let file = document.getElementById("swal_image").files[0];
+      formData.append("csrf_token", SCRIPT_APP_CSRF_TOKEN);
       if (file) {
         formData.append("image", file);
       }
@@ -326,6 +331,7 @@ $(document).on("click", ".editSupplier", function (e) {
           supplier_name: result.value.supplier_name,
           supplier_location: result.value.supplier_location,
           email: result.value.email,
+          csrf_token: SCRIPT_APP_CSRF_TOKEN,
         },
 
         dataType: "json",
@@ -378,7 +384,8 @@ $(document).on("click", ".deleteSupplier", function (e) {
 
         data: {
           id: supplierId,
-          table: "supplier", // ✅ FIXED
+          table: "supplier",
+          csrf_token: SCRIPT_APP_CSRF_TOKEN,
         },
 
         dataType: "json",
@@ -445,7 +452,7 @@ $(document).on("change", ".productSelect", function () {
 
     method: "POST",
 
-    data: { product_id: productId },
+    data: { product_id: productId, csrf_token: SCRIPT_APP_CSRF_TOKEN },
 
     success: function (response) {
       container.html(response);
