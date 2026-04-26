@@ -207,11 +207,31 @@ font-weight:600;">
     <script>
         let cart = {};
 
+        // Helper: update stock text/color on a product card
+        function updateStockUI(id) {
+            let card = document.querySelector(`.productCard[data-id="${id}"]`);
+            if (!card) return;
+            let stockText = card.querySelector(".stockText");
+            let stock = parseInt(card.dataset.stock);
+
+            if (stock <= 0) {
+                stockText.innerText = "Out of Stock";
+                stockText.style.color = "red";
+                card.classList.add("out");
+            } else if (stock < 10) {
+                stockText.innerText = `Low Stock (${stock})`;
+                stockText.style.color = "orange";
+                card.classList.remove("out");
+            } else {
+                stockText.innerText = `In Stock (${stock})`;
+                stockText.style.color = "green";
+                card.classList.remove("out");
+            }
+        }
+
         function addToCart(e, id, name, price) {
 
             let card = document.querySelector(`.productCard[data-id="${id}"]`);
-            let stockText = card.querySelector(".stockText");
-
             let currentStock = parseInt(card.dataset.stock);
 
             if (currentStock <= 0) {
@@ -228,20 +248,8 @@ font-weight:600;">
             else cart[id].qty++;
 
             // 🔥 UPDATE UI STOCK
-            let newStock = currentStock - 1;
-            card.dataset.stock = newStock;
-
-            if (newStock <= 0) {
-                stockText.innerText = "Out of Stock";
-                stockText.style.color = "red";
-                card.classList.add("out");
-            } else if (newStock < 10) {
-                stockText.innerText = `Low Stock (${newStock})`;
-                stockText.style.color = "orange";
-            } else {
-                stockText.innerText = `In Stock (${newStock})`;
-                stockText.style.color = "green";
-            }
+            card.dataset.stock = currentStock - 1;
+            updateStockUI(id);
 
             renderCart();
         }
@@ -249,12 +257,72 @@ font-weight:600;">
         function changeQty(id, d) {
             let item = cart[id];
             if (!item) return;
-            item.qty += d;
-            if (item.qty <= 0) delete cart[id];
+
+            let card = document.querySelector(`.productCard[data-id="${id}"]`);
+            let currentStock = parseInt(card.dataset.stock);
+
+            if (d > 0) {
+                // Adding to cart — validate stock
+                if (currentStock <= 0) {
+                    Swal.fire("Out of Stock", "No more stock available for " + item.name, "error");
+                    return;
+                }
+                item.qty += 1;
+                card.dataset.stock = currentStock - 1;
+            } else {
+                // Removing from cart — restore stock
+                item.qty -= 1;
+                card.dataset.stock = currentStock + 1;
+                if (item.qty <= 0) delete cart[id];
+            }
+
+            updateStockUI(id);
+            renderCart();
+        }
+
+        // Set cart quantity directly from input
+        function setQty(id, newQty) {
+            let item = cart[id];
+            if (!item) return;
+
+            newQty = parseInt(newQty);
+            if (isNaN(newQty) || newQty < 0) newQty = 0;
+
+            let card = document.querySelector(`.productCard[data-id="${id}"]`);
+            let currentStock = parseInt(card.dataset.stock);
+            let oldQty = item.qty;
+
+            // Total available = current stock + what's already in cart
+            let totalAvailable = currentStock + oldQty;
+
+            if (newQty > totalAvailable) {
+                Swal.fire("Insufficient Stock", "Only " + totalAvailable + " units available for " + item.name, "error");
+                renderCart(); // re-render to reset input
+                return;
+            }
+
+            // Update stock: restore old qty, subtract new qty
+            card.dataset.stock = totalAvailable - newQty;
+
+            if (newQty <= 0) {
+                delete cart[id];
+            } else {
+                item.qty = newQty;
+            }
+
+            updateStockUI(id);
             renderCart();
         }
 
         function removeItem(id) {
+            let item = cart[id];
+            if (item) {
+                // Restore stock before removing
+                let card = document.querySelector(`.productCard[data-id="${id}"]`);
+                let currentStock = parseInt(card.dataset.stock);
+                card.dataset.stock = currentStock + item.qty;
+                updateStockUI(id);
+            }
             delete cart[id];
             renderCart();
         }
@@ -274,8 +342,10 @@ font-weight:600;">
 <b>${i.name}</b><br>
 ₹${i.price} × ${i.qty}
 </div>
-<div>
+<div style="display:flex;align-items:center;gap:6px;">
 <button class="qtyBtn" onclick="changeQty(${id},-1)">-</button>
+<input type="number" min="0" value="${i.qty}" onchange="setQty(${id},this.value)"
+  style="width:50px;text-align:center;border:1px solid #ccc;border-radius:4px;padding:4px;font-size:14px;">
 <button class="qtyBtn" onclick="changeQty(${id},1)">+</button>
 <span class="removeBtn" onclick="removeItem(${id})">
 <i class="fa-solid fa-trash"></i>

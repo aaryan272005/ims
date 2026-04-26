@@ -46,7 +46,7 @@ $products = include('database/show.php');
                                 </div>
                                 <div>
                                     <label>PRODUCT NAME</label>
-                                    <select name="product_id[]" class="product_name">
+                                    <select class="product_name">
                                         <option value="">Select Product</option>
                                         <?php foreach ($products as $product): ?>
                                             <option value="<?= (int) $product['id'] ?>"><?= htmlspecialchars($product['product_name'], ENT_QUOTES, 'UTF-8') ?></option>

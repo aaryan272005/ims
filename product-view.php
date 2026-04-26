@@ -1,8 +1,7 @@
 <?php
-
+session_start();
 require_once __DIR__ . '/partials/security.php';
 require_once __DIR__ . '/database/connection.php';
-
 require_login('login.php');
 
 $_SESSION['table'] = 'products';
@@ -28,12 +27,14 @@ function product_image_src(string $imageName, string $productName): string
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>View Products ~VyaparTrack</title>
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
+
 <body>
     <div id="DashboardMainContainer">
         <?php include('partials/app-sidebar.php'); ?>
@@ -63,14 +64,14 @@ function product_image_src(string $imageName, string $productName): string
                             </thead>
                             <tbody>
                                 <?php foreach ($products as $index => $product): ?>
-                                <?php
-                                $stockStmt = $conn->prepare('SELECT quantity FROM stock WHERE product_id = ?');
-                                $stockStmt->execute([(int) $product['id']]);
-                                $qty = (int) ($stockStmt->fetchColumn() ?: 0);
-                                $productImageSrc = product_image_src((string) ($product['img'] ?? ''), (string) $product['product_name']);
+                                    <?php
+                                    $stockStmt = $conn->prepare('SELECT quantity FROM stock WHERE product_id = ?');
+                                    $stockStmt->execute([(int) $product['id']]);
+                                    $qty = (int) ($stockStmt->fetchColumn() ?: 0);
+                                    $productImageSrc = product_image_src((string) ($product['img'] ?? ''), (string) $product['product_name']);
 
-                                $supplierStmt = $conn->prepare(
-                                    'SELECT s.supplier_name
+                                    $supplierStmt = $conn->prepare(
+                                        'SELECT s.supplier_name
                                      FROM product_supplier_map psm
                                          JOIN supplier s ON s.id = psm.supplier_id
                                          WHERE psm.product_id = ?
@@ -107,17 +108,17 @@ function product_image_src(string $imageName, string $productName): string
                                         <td class="actionCell">
                                             <?php if ($isAdmin): ?>
                                                 <a href="#" class="action-btn editProduct editBtn"
-                                                   data-pid="<?= (int) $product['id'] ?>"
-                                                   data-name="<?= htmlspecialchars($product['product_name'], ENT_QUOTES, 'UTF-8') ?>"
-                                                   data-description="<?= htmlspecialchars($product['description'], ENT_QUOTES, 'UTF-8') ?>"
-                                                   title="Edit this item">
+                                                    data-pid="<?= (int) $product['id'] ?>"
+                                                    data-name="<?= htmlspecialchars($product['product_name'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-description="<?= htmlspecialchars($product['description'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    title="Edit this item">
                                                     <i class="fa fa-pencil"></i> Edit
                                                 </a>
                                                 <a href="#" class="action-btn deleteProduct deleteBtn"
-                                                   data-id="<?= (int) $product['id'] ?>"
-                                                   data-table="products"
-                                                   data-name="<?= htmlspecialchars($product['product_name'], ENT_QUOTES, 'UTF-8') ?>"
-                                                   title="Delete this item">
+                                                    data-id="<?= (int) $product['id'] ?>"
+                                                    data-table="products"
+                                                    data-name="<?= htmlspecialchars($product['product_name'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    title="Delete this item">
                                                     <i class="fa fa-trash"></i> Delete
                                                 </a>
                                             <?php else: ?>
@@ -135,8 +136,14 @@ function product_image_src(string $imageName, string $productName): string
     </div>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        window.appConfig = {
+            csrfToken: "<?= csrf_token() ?>"
+        };
+    </script>
     <script src="js/dashboard.js"></script>
     <script src="js/tooltips.js?v=<?= filemtime(__DIR__ . '/js/tooltips.js') ?>"></script>
     <script src="js/script.js"></script>
 </body>
+
 </html>

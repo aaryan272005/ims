@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../partials/security.php';
+start_secure_session();
 require_once __DIR__ . '/connection.php';
 
 require_admin(true);
@@ -33,8 +34,19 @@ try {
     }
 
     if ($table === 'products') {
-        $stmt = $conn->prepare('DELETE FROM product_supplier_map WHERE product_id = ?');
-        $stmt->execute([$id]);
+
+        // 🔥 DELETE EVERYTHING RELATED TO PRODUCT
+
+        $conn->prepare('DELETE FROM delivery_history WHERE order_id IN (SELECT id FROM purchase_orders WHERE product_id = ?)')->execute([$id]);
+
+        $conn->prepare('DELETE FROM stock WHERE product_id = ?')->execute([$id]);
+
+        $conn->prepare('DELETE FROM sales WHERE product_id = ?')->execute([$id]);
+
+        // ✅ NEW (very important) — must come before product_supplier_map due to FK constraint
+        $conn->prepare('DELETE FROM purchase_orders WHERE product_id = ?')->execute([$id]);
+
+        $conn->prepare('DELETE FROM product_supplier_map WHERE product_id = ?')->execute([$id]);
     }
 
     if ($table === 'users' && $id === (int) ($_SESSION['user_id'] ?? 0)) {
@@ -47,6 +59,7 @@ try {
     $conn->commit();
     echo json_encode(['success' => true]);
     exit();
+
 } catch (Throwable $e) {
     if ($conn->inTransaction()) {
         $conn->rollBack();
@@ -55,7 +68,7 @@ try {
     http_response_code(422);
     echo json_encode([
         'success' => false,
-        'message' => $e instanceof InvalidArgumentException ? $e->getMessage() : 'Unable to delete right now',
+        'message' => $e->getMessage(), // 👈 SHOW REAL ERROR (important for debugging)
     ]);
     exit();
 }

@@ -39,6 +39,7 @@ foreach ($suppliers as $supplier) {
         </div>
 
         <div>
+            <input type="hidden" name="product_id[]" value="<?= $product_id ?>">
             <input type="hidden" name="supplier_id[]" value="<?= (int) $supplier['id'] ?>">
 
             <label>Quantity:</label>
